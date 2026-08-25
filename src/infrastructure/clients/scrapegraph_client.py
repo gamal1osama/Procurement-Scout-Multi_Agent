@@ -1,9 +1,20 @@
-"""Web scraping client adapters implementing Strategy and Adapter patterns."""
+"""Web scraping client adapters implementing Strategy and Adapter patterns.
+
+Provides full forward/backward compatibility across scrapegraph-py SDK versions.
+"""
 
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
-from scrapegraph_py import Client
+
+# Multi-version compatibility import for scrapegraph-py SDK
+try:
+    from scrapegraph_py import Client as ScrapeGraphSDKClient
+except ImportError:
+    try:
+        from scrapegraph_py import ScrapeGraphAI as ScrapeGraphSDKClient
+    except ImportError:
+        ScrapeGraphSDKClient = None
 
 from src.core.config import Settings, get_settings
 from src.core.exceptions import ConfigurationError, ScrapingProviderError
@@ -20,7 +31,7 @@ class BaseScraperClient(ABC):
 
 
 class ScrapeGraphClientAdapter(BaseScraperClient):
-    """Adapter wrapping ScrapeGraphAI Client with error handling and logging."""
+    """Adapter wrapping ScrapeGraphAI Client with error handling, logging, and version compatibility."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
         self.settings = settings or get_settings()
@@ -31,29 +42,44 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                 "SCRAPEGRAPH_API_KEY is not configured but ScrapeGraph client was requested."
             )
 
-        self._client = Client(api_key=self.api_key)
+        if ScrapeGraphSDKClient is None:
+            raise ConfigurationError("scrapegraph-py package is not installed.")
+
+        self._client = ScrapeGraphSDKClient(api_key=self.api_key)
         logger.debug("Initialized ScrapeGraphClientAdapter successfully.")
 
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
-        """Execute AI web scraping extraction using ScrapeGraphAI."""
+        """Execute AI web scraping extraction using ScrapeGraphAI.
+        
+        Handles both modern smartscraper() and legacy extract() methods transparently.
+        """
         try:
             logger.debug("Extracting data via ScrapeGraphAI from URL: '{}'", url)
             output_schema = kwargs.pop("output_schema", None)
-            
-            # ScrapeGraphAI smartscraper call
-            response = self._client.smartscraper(
-                user_prompt=prompt,
-                website_url=url,
-                output_schema=output_schema,
-                **kwargs,
-            )
-            
-            # If response is a dict/pydantic model, extract result field if present
-            if hasattr(response, "result"):
-                return response.result
-            if isinstance(response, dict) and "result" in response:
-                return response["result"]
-            return response
+
+            # Check if modern smartscraper method is available
+            if hasattr(self._client, "smartscraper"):
+                response = self._client.smartscraper(
+                    user_prompt=prompt,
+                    website_url=url,
+                    output_schema=output_schema,
+                    **kwargs,
+                )
+                if hasattr(response, "result"):
+                    return response.result
+                if isinstance(response, dict) and "result" in response:
+                    return response["result"]
+                return response
+
+            # Fallback to extract method (legacy SDK or custom wrapper)
+            elif hasattr(self._client, "extract"):
+                return self._client.extract(prompt, url=url, **kwargs)
+
+            else:
+                raise ScrapingProviderError(
+                    "ScrapeGraphAI client does not support 'smartscraper' or 'extract' method."
+                )
+
         except Exception as exc:
             logger.error("ScrapeGraphAI extraction failed for URL '{}': {}", url, exc)
             raise ScrapingProviderError(
