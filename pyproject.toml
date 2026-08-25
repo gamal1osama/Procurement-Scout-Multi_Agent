@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "procurement-crew"
+version = "1.0.0"
+description = "Enterprise Multi-Agent Procurement Intelligence System built with CrewAI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Rankyx AI Team" }
+]
+dependencies = [
+    "crewai>=0.100.0",
+    "crewai-tools>=0.30.0",
+    "agentops>=0.3.0",
+    "tavily-python>=0.5.0",
+    "scrapegraph-py>=1.15.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "pyyaml>=6.0.1",
+    "chromadb>=0.5.0",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "typer[all]>=0.12.0",
+    "loguru>=0.7.2",
+    "python-dotenv>=1.0.1",
+    "jinja2>=3.1.4",
+    "httpx>=0.27.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.14.0",
+    "black>=24.4.2",
+    "ruff>=0.4.4",
+    "mypy>=1.10.0"
+]
+
+[project.scripts]
+procure = "src.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
