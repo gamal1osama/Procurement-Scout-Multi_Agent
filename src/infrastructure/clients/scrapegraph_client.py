@@ -1,20 +1,9 @@
-"""Web scraping client adapters implementing Strategy and Adapter patterns.
-
-Provides full forward/backward compatibility across scrapegraph-py SDK versions.
-"""
+"""Web scraping client adapters implementing Strategy and Adapter patterns."""
 
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
-
-# Multi-version compatibility import for scrapegraph-py SDK
-try:
-    from scrapegraph_py import Client as ScrapeGraphSDKClient
-except ImportError:
-    try:
-        from scrapegraph_py import ScrapeGraphAI as ScrapeGraphSDKClient
-    except ImportError:
-        ScrapeGraphSDKClient = None
+from scrapegraph_py import ScrapeGraphAI
 
 from src.core.config import Settings, get_settings
 from src.core.exceptions import ConfigurationError, ScrapingProviderError
@@ -31,7 +20,7 @@ class BaseScraperClient(ABC):
 
 
 class ScrapeGraphClientAdapter(BaseScraperClient):
-    """Adapter wrapping ScrapeGraphAI Client with error handling, logging, and version compatibility."""
+    """Adapter wrapping ScrapeGraphAI SDK with error handling and logging."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
         self.settings = settings or get_settings()
@@ -42,44 +31,31 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                 "SCRAPEGRAPH_API_KEY is not configured but ScrapeGraph client was requested."
             )
 
-        if ScrapeGraphSDKClient is None:
-            raise ConfigurationError("scrapegraph-py package is not installed.")
-
-        self._client = ScrapeGraphSDKClient(api_key=self.api_key)
-        logger.debug("Initialized ScrapeGraphClientAdapter successfully.")
+        self._client = ScrapeGraphAI(api_key=self.api_key)
+        logger.debug("Initialized ScrapeGraphClientAdapter with ScrapeGraphAI SDK.")
 
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
-        """Execute AI web scraping extraction using ScrapeGraphAI.
-        
-        Handles both modern smartscraper() and legacy extract() methods transparently.
-        """
+        """Execute AI web scraping extraction using ScrapeGraphAI."""
         try:
             logger.debug("Extracting data via ScrapeGraphAI from URL: '{}'", url)
-            output_schema = kwargs.pop("output_schema", None)
-
-            # Check if modern smartscraper method is available
-            if hasattr(self._client, "smartscraper"):
-                response = self._client.smartscraper(
-                    user_prompt=prompt,
-                    website_url=url,
-                    output_schema=output_schema,
-                    **kwargs,
-                )
-                if hasattr(response, "result"):
-                    return response.result
-                if isinstance(response, dict) and "result" in response:
-                    return response["result"]
-                return response
-
-            # Fallback to extract method (legacy SDK or custom wrapper)
-            elif hasattr(self._client, "extract"):
-                return self._client.extract(prompt, url=url, **kwargs)
-
-            else:
-                raise ScrapingProviderError(
-                    "ScrapeGraphAI client does not support 'smartscraper' or 'extract' method."
-                )
-
+            schema = kwargs.pop("schema", None)
+            
+            # ScrapeGraphAI extract call
+            result = self._client.extract(
+                prompt=prompt,
+                url=url,
+                schema=schema,
+                **kwargs,
+            )
+            
+            # If result is an ApiResult object, get the response data
+            if hasattr(result, "data"):
+                return result.data
+            if hasattr(result, "result"):
+                return result.result
+            if isinstance(result, dict) and "result" in result:
+                return result["result"]
+            return result
         except Exception as exc:
             logger.error("ScrapeGraphAI extraction failed for URL '{}': {}", url, exc)
             raise ScrapingProviderError(
