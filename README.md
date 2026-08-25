@@ -1,10 +1,10 @@
-# 🛒 Enterprise Multi-Agent Procurement Intelligence System
+# Enterprise Multi-Agent Procurement Intelligence System
 
 A production-grade, modular, and extensible Multi-Agent Procurement System built with [CrewAI](https://crewai.com). The system automates product discovery, single-product web search, deep web scraping, structured data extraction, and executive HTML procurement report authoring.
 
 ---
 
-## 🌟 Architecture & Key Design Patterns
+## Architecture & Key Design Patterns
 
 - **Factory Pattern**: `LLMFactory`, `EmbeddingFactory`, `AgentFactory`, `TaskFactory`, and `ToolFactory` ensure zero vendor lock-in.
 - **Strategy Pattern**: Pluggable search providers (Tavily / SerpAPI), scraping engines (ScrapeGraphAI / Playwright), and export sinks (HTML, JSON, S3).
@@ -14,7 +14,7 @@ A production-grade, modular, and extensible Multi-Agent Procurement System built
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### 1. Installation
 ```bash
@@ -53,5 +53,5 @@ API Documentation will be available at: `http://localhost:8000/docs`
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 Refer to [plan.md](plan.md) for the complete architectural breakdown and design specifications.
