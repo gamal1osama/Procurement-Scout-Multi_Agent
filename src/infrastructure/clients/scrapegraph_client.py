@@ -4,10 +4,12 @@ import os
 import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
+
 from scrapegraph_py import ScrapeGraphAI
+from scrapegraph_py.schemas import ExtractResponse, ApiResult
 
 from src.core.config import Settings, get_settings
-from src.core.exceptions import ConfigurationError, ScrapingProviderError
+from src.core.exceptions import ConfigurationError
 from src.core.logging import logger
 
 
@@ -21,7 +23,19 @@ class BaseScraperClient(ABC):
 
 
 class ScrapeGraphClientAdapter(BaseScraperClient):
-    """Adapter wrapping ScrapeGraphAI SDK with error handling, normalization, and logging."""
+    """Adapter wrapping ScrapeGraphAI SDK — mirrors notebook usage exactly.
+
+    The notebook does:
+        details = scrape_client.extract(
+            "Extract ```json\\n" + SingleExtractedProduct.schema_json() + "```\\nFrom the web page",
+            url=page_url
+        )
+
+    ScrapeGraphAI.extract() returns ApiResult[ExtractResponse].
+    ExtractResponse.json_data contains the structured dict ScrapeGraph extracted.
+    We unpack json_data and return it as-is, with only minimal price/availability
+    cleanup to handle currency strings and text availability phrases.
+    """
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
         self.settings = settings or get_settings()
@@ -33,178 +47,157 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
             )
 
         self._client = ScrapeGraphAI(api_key=self.api_key)
-        logger.debug("Initialized ScrapeGraphClientAdapter with ScrapeGraphAI SDK.")
+        logger.debug("Initialized ScrapeGraphClientAdapter.")
 
-    def _normalize_extracted_payload(self, raw_data: Any, page_url: str) -> Dict[str, Any]:
-        """Normalize ScrapeGraph extracted payload, ensuring clean numerical prices, booleans, and specs."""
-        if not isinstance(raw_data, dict):
-            return {
-                "page_url": page_url,
-                "is_available": False,
-                "product_current_price": None,
-                "product_original_price": None,
-                "product_discount_percentage": None,
-                "product_specs": [],
-            }
-
-        # 1. Normalize current price
-        raw_price = (
-            raw_data.get("product_current_price")
-            or raw_data.get("price")
-            or raw_data.get("current_price")
-        )
-        cleaned_price: Optional[float] = None
-        if raw_price is not None:
-            if isinstance(raw_price, (int, float)):
-                cleaned_price = float(raw_price)
-            elif isinstance(raw_price, str):
-                nums = re.findall(r"[\d,]+(?:\.\d+)?", raw_price.replace(" ", ""))
-                if nums:
-                    best_num = max(nums, key=len).replace(",", "")
-                    try:
-                        cleaned_price = float(best_num)
-                    except ValueError:
-                        pass
-
-        # 2. Normalize original price
-        raw_orig = (
-            raw_data.get("product_original_price")
-            or raw_data.get("original_price")
-            or raw_data.get("list_price")
-        )
-        cleaned_orig: Optional[float] = None
-        if raw_orig is not None:
-            if isinstance(raw_orig, (int, float)):
-                cleaned_orig = float(raw_orig)
-            elif isinstance(raw_orig, str):
-                nums = re.findall(r"[\d,]+(?:\.\d+)?", raw_orig.replace(" ", ""))
-                if nums:
-                    best_num = max(nums, key=len).replace(",", "")
-                    try:
-                        cleaned_orig = float(best_num)
-                    except ValueError:
-                        pass
-
-        # 3. Calculate discount percentage if missing
-        discount = raw_data.get("product_discount_percentage") or raw_data.get("discount")
-        if isinstance(discount, (int, float)):
-            discount = float(discount)
-        elif isinstance(discount, str):
-            nums = re.findall(r"[\d.]+", discount)
+    @staticmethod
+    def _parse_price(raw: Any) -> Optional[float]:
+        """Parse a price value that may be a float already or a currency string like 'EGP 8,249.00'."""
+        if raw is None:
+            return None
+        if isinstance(raw, (int, float)):
+            return float(raw) if raw > 0 else None
+        if isinstance(raw, str):
+            # Strip currency symbols/text and commas, extract the number
+            nums = re.findall(r"[\d,]+(?:\.\d+)?", raw.replace("\u200f", "").replace("\xa0", " "))
             if nums:
+                best = max(nums, key=len).replace(",", "")
                 try:
-                    discount = float(nums[0])
+                    val = float(best)
+                    return val if val > 0 else None
                 except ValueError:
-                    discount = None
-        elif discount is None and cleaned_price and cleaned_orig and cleaned_orig > cleaned_price:
-            discount = round(((cleaned_orig - cleaned_price) / cleaned_orig) * 100, 1)
+                    pass
+        return None
 
-        # 4. Normalize availability
-        avail = raw_data.get("is_available")
-        if avail is None:
-            avail_str = str(raw_data.get("availability", "")).lower()
-            if (
-                "out of stock" in avail_str
-                or "currently unavailable" in avail_str
-                or "غير متوفر" in avail_str
-            ):
-                avail = False
-            elif (
-                "in stock" in avail_str
-                or "left in stock" in avail_str
-                or "order soon" in avail_str
-                or "available" in avail_str
-                or "متوفر" in avail_str
-            ):
-                avail = True
-            elif cleaned_price is not None and cleaned_price > 0:
-                avail = True
-            else:
-                avail = False
-        elif isinstance(avail, str):
-            avail = avail.lower() in ["true", "yes", "1", "in stock", "available"]
-        else:
-            avail = bool(avail)
+    @staticmethod
+    def _parse_availability(raw_avail: Any, raw_avail_text: Any, price: Optional[float]) -> bool:
+        """Resolve is_available from ScrapeGraph's extracted value or availability text."""
+        # Already a boolean
+        if isinstance(raw_avail, bool):
+            return raw_avail
+        # String boolean
+        if isinstance(raw_avail, str):
+            low = raw_avail.lower().strip()
+            if low in ("true", "yes", "1", "in stock", "available", "متوفر"):
+                return True
+            if low in ("false", "no", "0", "out of stock", "unavailable", "غير متوفر"):
+                return False
 
-        # 5. Normalize specifications
-        specs = raw_data.get("product_specs") or raw_data.get("specs") or []
-        normalized_specs = []
-        if isinstance(specs, dict):
-            for k, v in specs.items():
-                normalized_specs.append({"specification_name": str(k), "specification_value": str(v)})
-        elif isinstance(specs, list):
-            for s in specs:
-                if isinstance(s, dict):
-                    name = str(
-                        s.get("specification_name")
-                        or s.get("name")
-                        or s.get("key")
-                        or s.get("title")
-                        or ""
-                    ).strip()
-                    val = str(
-                        s.get("specification_value")
-                        or s.get("value")
-                        or s.get("val")
-                        or ""
-                    ).strip()
-                    if name:
-                        normalized_specs.append(
-                            {"specification_name": name, "specification_value": val}
-                        )
+        # Fall back to availability text field
+        avail_str = str(raw_avail_text or "").lower()
+        if any(kw in avail_str for kw in ("out of stock", "currently unavailable", "غير متوفر")):
+            return False
+        if any(kw in avail_str for kw in ("in stock", "left in stock", "order soon", "available", "متوفر")):
+            return True
 
-        # Title & Image fallbacks
-        title = raw_data.get("product_title") or raw_data.get("title") or ""
-        img_url = raw_data.get("product_image_url") or raw_data.get("image_url") or raw_data.get("image") or ""
-        prod_url = raw_data.get("product_url") or page_url
+        # Last resort: if we got a price, the product is available
+        if price is not None and price > 0:
+            return True
 
-        return {
-            "page_url": page_url,
-            "product_title": title,
-            "product_image_url": img_url,
-            "product_url": prod_url,
-            "is_available": avail,
-            "product_current_price": cleaned_price,
-            "product_original_price": cleaned_orig,
-            "product_discount_percentage": discount,
-            "product_specs": normalized_specs[:10],
-        }
+        return False
+
+    def _unpack_result(self, result: ApiResult) -> Dict[str, Any]:
+        """Unpack an ApiResult[ExtractResponse] to the inner json_data dict."""
+        if result.status == "error" or result.data is None:
+            logger.warning("ScrapeGraph returned error status: {}", result.error)
+            return {}
+
+        data: ExtractResponse = result.data
+
+        # Log warnings (e.g. bot_blocked, spa_shell) from ScrapeGraph metadata
+        if hasattr(data, "metadata") and isinstance(data.metadata, dict):
+            warnings = data.metadata.get("warnings") or []
+            for w in warnings:
+                reason = w.get("reason") if isinstance(w, dict) else str(w)
+                logger.warning("ScrapeGraph fetch warning for URL: reason={}", reason)
+
+        if data.json_data and isinstance(data.json_data, dict):
+            return data.json_data
+
+        logger.warning("ScrapeGraph returned empty json_data. raw snippet: {}", str(getattr(data, "raw", ""))[:200])
+        return {}
 
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
-        """Execute AI web scraping extraction using ScrapeGraphAI and return a normalized dict."""
-        try:
-            logger.debug("Extracting data via ScrapeGraphAI from URL: '{}'", url)
-            schema = kwargs.pop("schema", None)
+        """Extract structured data from a URL — mirrors the notebook's scrape_client.extract() call.
 
-            result = self._client.extract(
+        Returns the raw json_data dict from ScrapeGraph with minimal cleanup applied:
+        - Numeric prices parsed from currency strings
+        - is_available resolved from text phrases
+        All other fields (title, image, specs, etc.) are returned as ScrapeGraph extracted them.
+        """
+        try:
+            logger.debug("ScrapeGraphAI extracting URL: '{}'", url)
+
+            result: ApiResult = self._client.extract(
                 prompt=prompt,
                 url=url,
-                schema=schema,
                 **kwargs,
             )
 
-            raw_payload = {}
-            if hasattr(result, "data") and result.data is not None:
-                data_obj = result.data
-                if hasattr(data_obj, "json_data") and data_obj.json_data:
-                    raw_payload = data_obj.json_data
-                elif hasattr(data_obj, "model_dump"):
-                    raw_payload = data_obj.model_dump()
-            elif hasattr(result, "json_data") and result.json_data:
-                raw_payload = result.json_data
-            elif hasattr(result, "model_dump"):
-                raw_payload = result.model_dump()
-            elif isinstance(result, dict):
-                raw_payload = result
+            raw: Dict[str, Any] = self._unpack_result(result)
 
-            return self._normalize_extracted_payload(raw_payload, page_url=url)
+            logger.info(
+                "ScrapeGraph raw payload keys for '{}': {}",
+                url,
+                list(raw.keys()) if raw else "EMPTY",
+            )
+
+            if not raw:
+                return {"page_url": url, "error": "ScrapeGraph returned empty payload"}
+
+            # ── Minimal cleanup only ──────────────────────────────────────────────
+            # 1. Price fields — parse currency strings to floats
+            price = self._parse_price(
+                raw.get("product_current_price")
+                or raw.get("price")
+                or raw.get("current_price")
+                or raw.get("product_price")
+            )
+            orig_price = self._parse_price(
+                raw.get("product_original_price")
+                or raw.get("original_price")
+                or raw.get("list_price")
+            )
+
+            # 2. Discount percentage
+            discount = raw.get("product_discount_percentage") or raw.get("discount")
+            if isinstance(discount, str):
+                nums = re.findall(r"[\d.]+", discount)
+                discount = float(nums[0]) if nums else None
+            elif isinstance(discount, (int, float)):
+                discount = float(discount)
+            elif discount is None and price and orig_price and orig_price > price:
+                discount = round(((orig_price - price) / orig_price) * 100, 1)
+
+            # 3. Availability
+            is_avail = self._parse_availability(
+                raw.get("is_available"),
+                raw.get("availability") or raw.get("stock_status"),
+                price,
+            )
+
+            # ── Return the cleaned payload (all other fields passed through as-is) ─
+            cleaned = dict(raw)  # preserve everything ScrapeGraph extracted
+            cleaned["page_url"] = url
+            cleaned["product_current_price"] = price
+            cleaned["product_original_price"] = orig_price
+            cleaned["product_discount_percentage"] = discount
+            cleaned["is_available"] = is_avail
+            # Ensure product_url falls back to page_url if missing
+            if not cleaned.get("product_url"):
+                cleaned["product_url"] = url
+
+            logger.info(
+                "Extracted '{}': price={}, orig={}, available={}",
+                url, price, orig_price, is_avail,
+            )
+            return cleaned
+
         except Exception as exc:
-            logger.warning("ScrapeGraphAI extraction error for URL '{}': {}", url, exc)
+            logger.error("ScrapeGraphAI extraction failed for URL '{}': {}", url, exc)
             return {
                 "page_url": url,
                 "is_available": False,
                 "error": str(exc),
-                "note": "Failed to scrape page content.",
             }
 
 

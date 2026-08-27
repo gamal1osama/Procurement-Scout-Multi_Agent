@@ -35,11 +35,14 @@ scraping_task:
   agent: "scraping_agent"
   description: >
     The task is to extract product details from any ecommerce store page url.
+    Use the URLs from the previous task's output (the search results).
     The task has to collect results from multiple pages urls.
     Collect the best {top_recommendations_no} products from the search results.
+    For each product page URL, call the web_scraping_tool exactly once with that URL.
   expected_output: "A JSON object containing products details"
   output_file: "step_3_search_results.json"
   output_schema: "AllExtractedProducts"
+
 
 procurement_report_author_task:
   agent: "procurement_report_author_agent"
