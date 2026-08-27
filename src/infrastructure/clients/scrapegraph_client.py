@@ -20,7 +20,7 @@ class BaseScraperClient(ABC):
 
 
 class ScrapeGraphClientAdapter(BaseScraperClient):
-    """Adapter wrapping ScrapeGraphAI SDK with error handling and logging."""
+    """Adapter wrapping ScrapeGraphAI SDK with error handling, normalization, and logging."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
         self.settings = settings or get_settings()
@@ -35,11 +35,11 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
         logger.debug("Initialized ScrapeGraphClientAdapter with ScrapeGraphAI SDK.")
 
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
-        """Execute AI web scraping extraction using ScrapeGraphAI."""
+        """Execute AI web scraping extraction using ScrapeGraphAI and return a clean dict."""
         try:
             logger.debug("Extracting data via ScrapeGraphAI from URL: '{}'", url)
             schema = kwargs.pop("schema", None)
-            
+
             # ScrapeGraphAI extract call
             result = self._client.extract(
                 prompt=prompt,
@@ -47,21 +47,35 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                 schema=schema,
                 **kwargs,
             )
-            
-            # If result is an ApiResult object, get the response data
-            if hasattr(result, "data"):
-                return result.data
-            if hasattr(result, "result"):
-                return result.result
-            if isinstance(result, dict) and "result" in result:
-                return result["result"]
-            return result
+
+            # Unpack ApiResult / ExtractResponse to plain dictionary
+            if hasattr(result, "data") and result.data is not None:
+                data_obj = result.data
+                if hasattr(data_obj, "json_data") and data_obj.json_data:
+                    return data_obj.json_data
+                if hasattr(data_obj, "model_dump"):
+                    return data_obj.model_dump()
+                return str(data_obj)
+            elif hasattr(result, "json_data") and result.json_data:
+                return result.json_data
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            elif isinstance(result, dict):
+                return result
+
+            return {
+                "page_url": url,
+                "is_available": False,
+                "note": "Page extraction returned empty response from scraper.",
+            }
         except Exception as exc:
-            logger.error("ScrapeGraphAI extraction failed for URL '{}': {}", url, exc)
-            raise ScrapingProviderError(
-                f"ScrapeGraphAI extraction failed for URL '{url}': {exc}",
-                details={"url": url, "error": str(exc)},
-            ) from exc
+            logger.warning("ScrapeGraphAI extraction error for URL '{}': {}", url, exc)
+            return {
+                "page_url": url,
+                "is_available": False,
+                "error": str(exc),
+                "note": "Failed to scrape page content.",
+            }
 
 
 class MockScraperClient(BaseScraperClient):

@@ -61,7 +61,7 @@ class WebScrapingTool(BaseProcurementTool):
     def _run(self, page_url: str) -> Any:
         """Extract structured product details from the given URL."""
         if not self.scraper_client:
-            return {"error": "Scraper client is not initialized."}
+            return {"page_url": page_url, "error": "Scraper client is not initialized."}
 
         schema_json = self._get_schema_representation()
         extraction_prompt = f"Extract ```json\n{schema_json}\n```\nFrom the web page"
@@ -72,6 +72,13 @@ class WebScrapingTool(BaseProcurementTool):
             prompt=extraction_prompt,
             url=page_url,
         )
+
+        if details is None:
+            details = {
+                "page_url": page_url,
+                "is_available": False,
+                "note": "No details returned by scraper",
+            }
 
         return {
             "page_url": page_url,
