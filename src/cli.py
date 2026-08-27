@@ -111,7 +111,7 @@ def run_procurement(
         crew_runner = ProcurementCrew(settings=settings, output_dir=output_dir)
         result = crew_runner.run(inputs=procurement_input)
 
-        console.print("\n[bold green]✅ Procurement Workflow Completed Successfully![/bold green]")
+        console.print("\n[bold green]Procurement Workflow Completed Successfully![/bold green]")
         
         table = Table(title="Generated Deliverables & Artifacts", show_header=True, header_style="bold magenta")
         table.add_column("Step", style="dim")
@@ -132,7 +132,7 @@ def run_procurement(
             console.print(f"\n[dim]Total Execution Time: {result.metrics.duration_seconds}s[/dim]")
 
     except Exception as exc:
-        console.print(f"\n[bold red]❌ Execution Error:[/bold red] {exc}")
+        console.print(f"\n[bold red]Execution Error:[/bold red] {exc}")
         sys.exit(1)
 
 
@@ -169,12 +169,12 @@ def validate_config() -> None:
     table.add_column("Status")
     table.add_column("Path / Details", style="dim")
 
-    table.add_row("Agents Config", "✅ Found" if agents_yaml.exists() else "❌ Missing", str(agents_yaml))
-    table.add_row("Tasks Config", "✅ Found" if tasks_yaml.exists() else "❌ Missing", str(tasks_yaml))
-    table.add_row("Company Context", "✅ Found" if context_txt.exists() else "❌ Missing", str(context_txt))
-    table.add_row("LLM Provider", f"✅ {settings.llm_provider}", settings.llm_model)
-    table.add_row("Search Provider", f"✅ {settings.search_provider}", "Tavily" if settings.tavily_api_key else "Mock/Missing Key")
-    table.add_row("Scraper Provider", f"✅ {settings.scraper_provider}", "ScrapeGraphAI" if settings.scrapegraph_api_key else "Mock/Missing Key")
+    table.add_row("Agents Config", "Found" if agents_yaml.exists() else "Missing", str(agents_yaml))
+    table.add_row("Tasks Config", "Found" if tasks_yaml.exists() else "Missing", str(tasks_yaml))
+    table.add_row("Company Context", "Found" if context_txt.exists() else "Missing", str(context_txt))
+    table.add_row("LLM Provider", f"{settings.llm_provider}", settings.llm_model)
+    table.add_row("Search Provider", f"{settings.search_provider}", "Tavily" if settings.tavily_api_key else "Mock/Missing Key")
+    table.add_row("Scraper Provider", f"{settings.scraper_provider}", "ScrapeGraphAI" if settings.scrapegraph_api_key else "Mock/Missing Key")
 
     console.print(table)
 
