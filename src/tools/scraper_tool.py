@@ -73,10 +73,11 @@ class WebScrapingTool(BaseProcurementTool):
             url=page_url,
         )
 
-        if details is None:
+        if details is None or not details:
             details = {
                 "page_url": page_url,
                 "is_available": False,
+                "product_current_price": None,
                 "note": "No details returned by scraper",
             }
 
