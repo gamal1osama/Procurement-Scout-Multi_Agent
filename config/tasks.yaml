@@ -1,6 +1,4 @@
-# ==========================================
 # Declarative Multi-Agent Tasks Configuration
-# ==========================================
 
 search_queries_recommendation_task:
   agent: "search_queries_recommendation_agent"

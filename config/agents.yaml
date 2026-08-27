@@ -1,6 +1,4 @@
-# ==========================================
 # Declarative Multi-Agent Configuration
-# ==========================================
 
 search_queries_recommendation_agent:
   role: "Search Queries Recommendation Agent"
