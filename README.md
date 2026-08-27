@@ -1,4 +1,4 @@
-# 🛒 Enterprise Multi-Agent Procurement Intelligence System
+# Enterprise Multi-Agent Procurement Intelligence System
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![CrewAI](https://img.shields.io/badge/CrewAI-1.15.17-orange.svg)](https://crewai.com)
@@ -10,7 +10,7 @@ An enterprise-grade, production-ready **Multi-Agent Procurement Intelligence Sys
 
 ---
 
-## 🏛️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -72,7 +72,7 @@ graph TD
 
 ---
 
-## 🎨 Applied Design Patterns Matrix
+## Applied Design Patterns Matrix
 
 | Design Pattern | Architectural Purpose | Code Implementation |
 | :--- | :--- | :--- |
@@ -85,7 +85,7 @@ graph TD
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 abubakr-crewai/
@@ -164,7 +164,7 @@ abubakr-crewai/
 
 ---
 
-## 🚀 Quickstart Guide
+## Quickstart Guide
 
 ### 1. Prerequisites
 - **Python**: `>= 3.12`
@@ -201,7 +201,7 @@ OUTPUT_DIR=./outputs
 
 ---
 
-## 💻 Usage & Interfaces
+## Usage & Interfaces
 
 ### 1. Run via CLI (Interactive)
 ```bash
@@ -252,7 +252,7 @@ uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 🧪 Testing & Quality Assurance
+## Testing & Quality Assurance
 
 Run the automated test suite with pytest:
 ```bash
@@ -262,7 +262,7 @@ All **19 unit and integration tests** run isolated with mock adapters and zero r
 
 ---
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ### Run with Docker Compose:
 ```bash
@@ -278,7 +278,7 @@ docker compose down
 
 ---
 
-## 🔧 Extensibility Guide
+## Extensibility Guide
 
 ### Adding a New Tool
 1. Create your tool class subclassing `BaseProcurementTool` in `src/tools/my_tool.py`:
@@ -306,5 +306,5 @@ docker compose down
 
 ---
 
-## 📄 License
+## License
 This project is licensed under the MIT License.

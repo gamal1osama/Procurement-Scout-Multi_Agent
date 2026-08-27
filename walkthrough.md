@@ -1,13 +1,13 @@
-# 🚀 End-to-End Multi-Agent Procurement System Walkthrough
+# End-to-End Multi-Agent Procurement System Walkthrough
 
-## 📋 Overview & Transformation Summary
+## Overview & Transformation Summary
 We have successfully converted the experimental notebook (`crewai_abubakr.ipynb`) into a **fully modular, extensible, production-ready Multi-Agent Intelligence System** built with **CrewAI** and modern Python architecture.
 
 The codebase strictly follows the architectural blueprint defined in [plan.md](file:///media/gamal/D/materials/Ai/NLP/agentic/abubakr-crewai/plan.md), achieving 100% test coverage across all layers with **19 automated tests passing**.
 
 ---
 
-## 🏛️ Applied Design Patterns & Architecture
+## Applied Design Patterns & Architecture
 
 ```mermaid
 graph TD
@@ -53,7 +53,7 @@ graph TD
 
 ---
 
-## 📦 What Was Built Step-by-Step
+## What Was Built Step-by-Step
 
 | Step | Component | Branch | Description & Design Patterns |
 | :--- | :--- | :--- | :--- |
@@ -70,7 +70,7 @@ graph TD
 
 ---
 
-## 🧪 Verification & Test Results
+## Verification & Test Results
 
 ```
 ============================= test session starts ==============================
@@ -102,7 +102,7 @@ tests/unit/test_tools.py::test_tool_registry PASSED                      [100%]
 
 ---
 
-## 🚀 How to Run in Production
+## How to Run in Production
 
 ### 1. Run via CLI
 ```bash
