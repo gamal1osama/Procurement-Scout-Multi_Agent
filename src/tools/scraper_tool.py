@@ -50,11 +50,10 @@ class WebScrapingTool(BaseProcurementTool):
                 self.scraper_client = ScrapeGraphClientAdapter(settings=cfg)
 
     def _run(self, page_url: str) -> Any:
-        """Extract structured product details exactly following the notebook flow."""
+        """Extract structured product details from a target web page."""
         if not self.scraper_client:
             return {"page_url": page_url, "error": "Scraper client is not initialized."}
 
-        # Exact prompt construction from the notebook
         prompt = "Extract ```json\n" + SingleExtractedProduct.schema_json() + "```\nFrom the web page"
 
         details = self.execute_safely(

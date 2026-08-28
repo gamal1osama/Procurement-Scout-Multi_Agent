@@ -24,18 +24,10 @@ class BaseScraperClient(ABC):
 
 
 class ScrapeGraphClientAdapter(BaseScraperClient):
-    """Adapter wrapping ScrapeGraphAI SDK — mirrors notebook usage exactly.
+    """Adapter wrapping ScrapeGraphAI SDK for structured product information extraction.
 
-    The notebook does:
-        details = scrape_client.extract(
-            "Extract ```json\\n" + SingleExtractedProduct.schema_json() + "```\\nFrom the web page",
-            url=page_url
-        )
-
-    ScrapeGraphAI.extract() returns ApiResult[ExtractResponse].
-    ExtractResponse.json_data contains the structured dict ScrapeGraph extracted.
-    We unpack json_data and return it as-is, with only minimal price/availability
-    cleanup to handle currency strings and text availability phrases.
+    Extracts structured schema payloads from web pages, normalizes numeric pricing,
+    resolves availability status, and handles transient errors with retry logic.
     """
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
@@ -118,11 +110,10 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
         return {}
 
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
-        """Extract structured data from a URL — mirrors the notebook's scrape_client.extract() call.
+        """Extract structured data from a target web page URL.
 
-        Adds retry logic (up to 3 attempts) with exponential backoff to handle ScrapeGraph
-        rate limiting. A 2-second base delay is inserted before each request to avoid hammering
-        the API when the scraping agent calls this tool many times in sequence.
+        Executes extraction with exponential backoff retries to handle rate limits
+        and transient network errors.
         """
         # Small delay before every call to avoid rate limiting when scraping many URLs
         time.sleep(2)
@@ -161,8 +152,7 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                 if not raw:
                     return {"page_url": url, "error": "ScrapeGraph returned empty payload"}
 
-                # ── Minimal cleanup only ──────────────────────────────────────────────
-                # 1. Price fields — parse currency strings to floats
+                # 1. Price fields normalization
                 price = self._parse_price(
                     raw.get("product_current_price")
                     or raw.get("price")
@@ -175,7 +165,7 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                     or raw.get("list_price")
                 )
 
-                # 2. Discount percentage
+                # 2. Discount percentage normalization
                 discount = raw.get("product_discount_percentage") or raw.get("discount")
                 if isinstance(discount, str):
                     nums = re.findall(r"[\d.]+", discount)
@@ -185,15 +175,15 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
                 elif discount is None and price and orig_price and orig_price > price:
                     discount = round(((orig_price - price) / orig_price) * 100, 1)
 
-                # 3. Availability
+                # 3. Stock and availability resolution
                 is_avail = self._parse_availability(
                     raw.get("is_available"),
                     raw.get("availability") or raw.get("stock_status"),
                     price,
                 )
 
-                # ── Return the cleaned payload (all other fields passed through as-is) ─
-                cleaned = dict(raw)  # preserve everything ScrapeGraph extracted
+                # 4. Assembled normalized payload
+                cleaned = dict(raw)
                 cleaned["page_url"] = url
                 cleaned["product_current_price"] = price
                 cleaned["product_original_price"] = orig_price

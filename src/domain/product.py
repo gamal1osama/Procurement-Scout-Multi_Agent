@@ -1,14 +1,8 @@
-"""Domain models and schemas for product specifications and deep web scraping extraction.
-
-Exact mirror of the notebook (Cell 18). Field title= values match the notebook exactly —
-ScrapeGraphAI reads the JSON schema 'title' property as its extraction hint.
-"""
+"""Domain models and schemas for product specifications and deep web scraping extraction."""
 
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
-
-# ── Exact notebook Cell 18 ────────────────────────────────────────────────────
 
 class ProductSpec(BaseModel):
     specification_name: str
@@ -44,10 +38,6 @@ class SingleExtractedProduct(BaseModel):
         default=None,
     )
 
-    # NOTE: notebook used Pydantic v1 min_items=1/max_items=5 on this field.
-    # In Pydantic v2, min_length/max_length on List fields are enforced at validation time.
-    # We keep it optional (default_factory) so the pipeline doesn't crash when ScrapeGraph
-    # returns empty data due to credits/rate-limits. The LLM is still instructed to fill it.
     product_specs: List[ProductSpec] = Field(
         default_factory=list,
         title="The specifications of the product. Focus on the most important specs to compare.",

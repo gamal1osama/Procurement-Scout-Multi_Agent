@@ -15,13 +15,13 @@ from src.domain.procurement import ProcurementInput
 
 
 def main() -> None:
-    """Execute the procurement workflow with default inputs matching the notebook."""
+    """Execute the default procurement intelligence workflow."""
     settings = get_settings()
     setup_logging(log_level=settings.log_level)
 
     logger.info("Initializing Enterprise Multi-Agent Procurement System...")
 
-    # Default parameters mirroring the notebook workflow
+    # Default procurement search inputs
     inputs = ProcurementInput(
         product_name="coffee machine for office",
         websites_list=["www.amazon.eg", "www.jumia.com.eg", "www.noon.com/egypt-en"],
