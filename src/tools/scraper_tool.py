@@ -1,6 +1,5 @@
 """Web Scraping Tool for extracting structured product details using ScrapeGraphAI."""
 
-import json
 from typing import Any, Dict, Optional, Type
 from pydantic import BaseModel, Field
 
@@ -50,36 +49,20 @@ class WebScrapingTool(BaseProcurementTool):
             else:
                 self.scraper_client = ScrapeGraphClientAdapter(settings=cfg)
 
-    def _get_schema_representation(self) -> str:
-        """Returns JSON schema string representation of the target product model."""
-        if hasattr(SingleExtractedProduct, "model_json_schema"):
-            schema_dict = SingleExtractedProduct.model_json_schema()
-        else:
-            schema_dict = SingleExtractedProduct.schema()
-        return json.dumps(schema_dict, indent=2)
-
     def _run(self, page_url: str) -> Any:
-        """Extract structured product details from the given URL."""
+        """Extract structured product details exactly following the notebook flow."""
         if not self.scraper_client:
             return {"page_url": page_url, "error": "Scraper client is not initialized."}
 
-        schema_json = self._get_schema_representation()
-        extraction_prompt = f"Extract ```json\n{schema_json}\n```\nFrom the web page"
+        # Exact prompt construction from the notebook
+        prompt = "Extract ```json\n" + SingleExtractedProduct.schema_json() + "```\nFrom the web page"
 
         details = self.execute_safely(
             operation_name="extract",
             fn=self.scraper_client.extract,
-            prompt=extraction_prompt,
+            prompt=prompt,
             url=page_url,
         )
-
-        if details is None or not details:
-            details = {
-                "page_url": page_url,
-                "is_available": False,
-                "product_current_price": None,
-                "note": "No details returned by scraper",
-            }
 
         return {
             "page_url": page_url,
