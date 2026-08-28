@@ -2,6 +2,7 @@
 
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -119,86 +120,103 @@ class ScrapeGraphClientAdapter(BaseScraperClient):
     def extract(self, prompt: str, url: str, **kwargs: Any) -> Any:
         """Extract structured data from a URL — mirrors the notebook's scrape_client.extract() call.
 
-        Returns the raw json_data dict from ScrapeGraph with minimal cleanup applied:
-        - Numeric prices parsed from currency strings
-        - is_available resolved from text phrases
-        All other fields (title, image, specs, etc.) are returned as ScrapeGraph extracted them.
+        Adds retry logic (up to 3 attempts) with exponential backoff to handle ScrapeGraph
+        rate limiting. A 2-second base delay is inserted before each request to avoid hammering
+        the API when the scraping agent calls this tool many times in sequence.
         """
-        try:
-            logger.debug("ScrapeGraphAI extracting URL: '{}'", url)
+        # Small delay before every call to avoid rate limiting when scraping many URLs
+        time.sleep(2)
 
-            result: ApiResult = self._client.extract(
-                prompt=prompt,
-                url=url,
-                **kwargs,
-            )
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.debug("ScrapeGraphAI extracting URL: '{}' (attempt {}/{})", url, attempt, max_retries)
 
-            raw: Dict[str, Any] = self._unpack_result(result)
+                result: ApiResult = self._client.extract(
+                    prompt=prompt,
+                    url=url,
+                    **kwargs,
+                )
 
-            logger.info(
-                "ScrapeGraph raw payload keys for '{}': {}",
-                url,
-                list(raw.keys()) if raw else "EMPTY",
-            )
+                # Fast-fail on credit exhaustion — retrying won't help
+                if result.status == "error" and result.error and "insufficient credits" in (result.error or "").lower():
+                    logger.error("ScrapeGraph insufficient credits for URL '{}': {}", url, result.error)
+                    return {"page_url": url, "is_available": False, "error": result.error}
 
-            if not raw:
-                return {"page_url": url, "error": "ScrapeGraph returned empty payload"}
+                # Retry on rate limiting
+                if result.status == "error" and result.error and "rate limit" in (result.error or "").lower():
+                    wait = 2 ** attempt
+                    logger.warning("ScrapeGraph rate limited for '{}'. Waiting {}s before retry...", url, wait)
+                    time.sleep(wait)
+                    continue
 
-            # ── Minimal cleanup only ──────────────────────────────────────────────
-            # 1. Price fields — parse currency strings to floats
-            price = self._parse_price(
-                raw.get("product_current_price")
-                or raw.get("price")
-                or raw.get("current_price")
-                or raw.get("product_price")
-            )
-            orig_price = self._parse_price(
-                raw.get("product_original_price")
-                or raw.get("original_price")
-                or raw.get("list_price")
-            )
+                raw: Dict[str, Any] = self._unpack_result(result)
 
-            # 2. Discount percentage
-            discount = raw.get("product_discount_percentage") or raw.get("discount")
-            if isinstance(discount, str):
-                nums = re.findall(r"[\d.]+", discount)
-                discount = float(nums[0]) if nums else None
-            elif isinstance(discount, (int, float)):
-                discount = float(discount)
-            elif discount is None and price and orig_price and orig_price > price:
-                discount = round(((orig_price - price) / orig_price) * 100, 1)
+                logger.info(
+                    "ScrapeGraph raw payload keys for '{}': {}",
+                    url,
+                    list(raw.keys()) if raw else "EMPTY",
+                )
 
-            # 3. Availability
-            is_avail = self._parse_availability(
-                raw.get("is_available"),
-                raw.get("availability") or raw.get("stock_status"),
-                price,
-            )
+                if not raw:
+                    return {"page_url": url, "error": "ScrapeGraph returned empty payload"}
 
-            # ── Return the cleaned payload (all other fields passed through as-is) ─
-            cleaned = dict(raw)  # preserve everything ScrapeGraph extracted
-            cleaned["page_url"] = url
-            cleaned["product_current_price"] = price
-            cleaned["product_original_price"] = orig_price
-            cleaned["product_discount_percentage"] = discount
-            cleaned["is_available"] = is_avail
-            # Ensure product_url falls back to page_url if missing
-            if not cleaned.get("product_url"):
-                cleaned["product_url"] = url
+                # ── Minimal cleanup only ──────────────────────────────────────────────
+                # 1. Price fields — parse currency strings to floats
+                price = self._parse_price(
+                    raw.get("product_current_price")
+                    or raw.get("price")
+                    or raw.get("current_price")
+                    or raw.get("product_price")
+                )
+                orig_price = self._parse_price(
+                    raw.get("product_original_price")
+                    or raw.get("original_price")
+                    or raw.get("list_price")
+                )
 
-            logger.info(
-                "Extracted '{}': price={}, orig={}, available={}",
-                url, price, orig_price, is_avail,
-            )
-            return cleaned
+                # 2. Discount percentage
+                discount = raw.get("product_discount_percentage") or raw.get("discount")
+                if isinstance(discount, str):
+                    nums = re.findall(r"[\d.]+", discount)
+                    discount = float(nums[0]) if nums else None
+                elif isinstance(discount, (int, float)):
+                    discount = float(discount)
+                elif discount is None and price and orig_price and orig_price > price:
+                    discount = round(((orig_price - price) / orig_price) * 100, 1)
 
-        except Exception as exc:
-            logger.error("ScrapeGraphAI extraction failed for URL '{}': {}", url, exc)
-            return {
-                "page_url": url,
-                "is_available": False,
-                "error": str(exc),
-            }
+                # 3. Availability
+                is_avail = self._parse_availability(
+                    raw.get("is_available"),
+                    raw.get("availability") or raw.get("stock_status"),
+                    price,
+                )
+
+                # ── Return the cleaned payload (all other fields passed through as-is) ─
+                cleaned = dict(raw)  # preserve everything ScrapeGraph extracted
+                cleaned["page_url"] = url
+                cleaned["product_current_price"] = price
+                cleaned["product_original_price"] = orig_price
+                cleaned["product_discount_percentage"] = discount
+                cleaned["is_available"] = is_avail
+                if not cleaned.get("product_url"):
+                    cleaned["product_url"] = url
+
+                logger.info(
+                    "Extracted '{}': price={}, orig={}, available={}",
+                    url, price, orig_price, is_avail,
+                )
+                return cleaned
+
+            except Exception as exc:
+                logger.error("ScrapeGraphAI extraction error on attempt {}/{} for '{}': {}", attempt, max_retries, url, exc)
+                if attempt < max_retries:
+                    time.sleep(2 ** attempt)
+                else:
+                    return {"page_url": url, "is_available": False, "error": str(exc)}
+
+        return {"page_url": url, "is_available": False, "error": "Max retries exceeded"}
+
 
 
 class MockScraperClient(BaseScraperClient):

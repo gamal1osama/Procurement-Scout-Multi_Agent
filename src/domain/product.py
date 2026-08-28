@@ -53,21 +53,19 @@ class SingleExtractedProduct(BaseModel):
     )
 
     product_specs: List[ProductSpec] = Field(
-        ...,
+        default_factory=list,
         title="The specifications of the product. Focus on the most important specs to compare.",
-        min_length=1,
-        max_length=5,
     )
 
     agent_recommendation_rank: int = Field(
-        ...,
+        default=3,
         title=(
             "The rank of the product to be considered in the final procurement report. "
             "(out of 5, Higher is Better) in the recommendation list ordering from the best to the worst"
         ),
     )
     agent_recommendation_notes: List[str] = Field(
-        ...,
+        default_factory=list,
         title=(
             "A set of notes why would you recommend or not recommend this product "
             "to the company, compared to other products."
